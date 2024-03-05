@@ -1,8 +1,6 @@
 const User = require("../models/user.model");
-const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const secretKey = 'SecretKey';
-const tokenBlacklist = new Set();
+
 
 exports.registerUser = async (req, res) => {
 
@@ -27,55 +25,27 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-exports.loginUser = async (req, res) => {
-
-
+exports.syncOfflineData = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
+    const offlineData = req.body;
+  
+    for (const data of offlineData) {
+      const existingUser = await User.findOne({ email: data.email });
+      if (existingUser) {
+        continue;
+      }
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const user = new User({
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        password: hashedPassword,
+      });
+      await user.save();
+      console.log(`User ${data.email} registered from offline data`);
     }
-
-    const isPasswordValid = await bcrypt.compareSync(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    const token = jwt.sign({ email: user.email }, secretKey, { expiresIn: '3m' });
-    console.log(token);
-    res.status(200).json({ token });
+    res.status(200).json({ message: "Offline data synchronized successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
-
-exports.logoutUser = (req, res) => {
-  const token = req.headers.authorization?.split(" ")[1];
-
-  if (token) {
-    tokenBlacklist.add(token);
-    res.status(200).json({ message: "Logout successful" });
-  } else {
-    res.status(400).json({ message: "Invalid token" });
-  }
-};
-
-exports.verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-
-  if (token && !tokenBlacklist.has(token)) {
-    jwt.verify(token, secretKey, (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ message: "Invalid token" });
-      }
-      req.user = decoded;
-      next();
-    });
-  } else {
-    res.status(401).json({ message: "Invalid token" });
-  }
-};
-
-
-
